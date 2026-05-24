@@ -20,6 +20,7 @@ from crisp.gui.widgets import ProcessorPanel
 from crisp.gui.workers import BatchWorker, CleanupWorker
 
 _AUDIO_FILTER = "Audio (*.wav *.flac *.ogg *.mp3 *.m4a *.aac *.aiff)"
+_SETTINGS_FILTER = "Crisp settings (*.crisp.json *.json)"
 
 
 class MainWindow(QtWidgets.QMainWindow):
@@ -108,6 +109,16 @@ class MainWindow(QtWidgets.QMainWindow):
         inner_layout.addStretch(1)
         scroll.setWidget(inner)
         clean.addWidget(scroll, 1)
+
+        # Save / load custom cleanup settings (toggles + slider values).
+        io_row = QtWidgets.QHBoxLayout()
+        self.save_settings_btn = QtWidgets.QPushButton("Save settings…")
+        self.save_settings_btn.clicked.connect(self._save_settings)
+        self.load_settings_btn = QtWidgets.QPushButton("Load settings…")
+        self.load_settings_btn.clicked.connect(self._load_settings)
+        io_row.addWidget(self.save_settings_btn)
+        io_row.addWidget(self.load_settings_btn)
+        clean.addLayout(io_row)
 
         self.apply_btn = QtWidgets.QPushButton("Apply cleanup")
         self.apply_btn.clicked.connect(self._apply_cleanup)
@@ -267,6 +278,35 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _set_param(self, key: str, param: str, value: object) -> None:
         self._settings.params.setdefault(key, {})[param] = value
+
+    def _save_settings(self) -> None:
+        path, _ = QtWidgets.QFileDialog.getSaveFileName(
+            self, "Save cleanup settings", "cleanup.crisp.json", _SETTINGS_FILTER
+        )
+        if not path:
+            return
+        try:
+            self._settings.save(path)
+        except Exception as exc:
+            QtWidgets.QMessageBox.critical(self, "Save failed", str(exc))
+            return
+        self.statusBar().showMessage(f"Saved settings to {Path(path).name}")
+
+    def _load_settings(self) -> None:
+        path, _ = QtWidgets.QFileDialog.getOpenFileName(
+            self, "Load cleanup settings", "", _SETTINGS_FILTER
+        )
+        if not path:
+            return
+        try:
+            self._settings = CleanupSettings.load(path)
+        except Exception as exc:
+            QtWidgets.QMessageBox.critical(self, "Load failed", str(exc))
+            return
+        # Reflect the loaded values back into every panel's controls.
+        for key, panel in self.panels.items():
+            panel.set_state(self._settings.is_enabled(key), self._settings.params.get(key, {}))
+        self.statusBar().showMessage(f"Loaded settings from {Path(path).name}")
 
     def _apply_cleanup(self) -> None:
         if self._original is None:

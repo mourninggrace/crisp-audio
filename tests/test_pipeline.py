@@ -53,3 +53,25 @@ def test_empty_settings_is_passthrough():
     settings = CleanupSettings(enabled={})
     out = CleanupEngine().run(clip, settings)
     assert np.array_equal(out.samples, clip.samples)
+
+
+def test_settings_roundtrip(tmp_path):
+    settings = CleanupSettings.defaults()
+    settings.enabled["dereverb"] = True
+    settings.params["noise"] = {"strength": 0.42}
+    path = tmp_path / "s.crisp.json"
+    settings.save(path)
+
+    loaded = CleanupSettings.load(path)
+    assert loaded.enabled["dereverb"] is True
+    assert loaded.params["noise"]["strength"] == 0.42
+
+
+def test_settings_from_dict_rejects_unknown_keys():
+    loaded = CleanupSettings.from_dict({
+        "enabled": {"noise": True, "bogus": True},
+        "params": {"bogus": {"x": 1}},
+    })
+    assert "noise" in loaded.enabled
+    assert "bogus" not in loaded.enabled
+    assert "bogus" not in loaded.params

@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   EQ amounts, plosive sensitivity, LUFS target, etc.).
 - Waveform playhead: a cursor tracks playback position across both the original
   and cleaned waveforms while audio plays.
+- Save/load custom cleanup settings: toggle + slider state persists to a
+  `*.crisp.json` file and reloads into the panels. Loading ignores unknown keys
+  so older or hand-edited files can't corrupt the pipeline.
+- `HISTORY.md`: a narrative history / decision log alongside this changelog.
 
 ## [0.1.0] - 2026-05-24
 

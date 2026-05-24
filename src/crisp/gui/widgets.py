@@ -41,6 +41,13 @@ class FloatSlider(QtWidgets.QWidget):
         self._update_label(value)
         self._slider.valueChanged.connect(self._on_slider)
 
+    def set_value(self, value: float) -> None:
+        """Programmatically move the slider without emitting ``valueChanged``."""
+        self._slider.blockSignals(True)
+        self._slider.setValue(self._to_step(value))
+        self._slider.blockSignals(False)
+        self._update_label(value)
+
     def _to_step(self, value: float) -> int:
         return round((value - self._spec.minimum) / self._spec.step)
 
@@ -87,6 +94,8 @@ class ProcessorPanel(QtWidgets.QGroupBox):
         body = QtWidgets.QVBoxLayout(self)
         body.setSpacing(2)
 
+        self._defaults = dict(proc_cls.default_params)
+        self._controls: dict[str, QtWidgets.QWidget] = {}
         merged = {**proc_cls.default_params, **params}
         for spec in proc_cls.param_specs:
             value = merged.get(spec.key, 0)
@@ -95,10 +104,30 @@ class ProcessorPanel(QtWidgets.QGroupBox):
                 cb.setChecked(bool(value))
                 cb.toggled.connect(lambda on, s=spec: self._emit(s.key, on))
                 body.addWidget(cb)
+                self._controls[spec.key] = cb
             else:
                 slider = FloatSlider(spec, float(value))
                 slider.valueChanged.connect(lambda v, s=spec: self._emit(s.key, v))
                 body.addWidget(slider)
+                self._controls[spec.key] = slider
 
     def _emit(self, param_key: str, value: object) -> None:
         self._on_param(self._key, param_key, value)
+
+    def set_state(self, enabled: bool, params: dict) -> None:
+        """Refresh the panel from loaded settings without firing callbacks."""
+        self.blockSignals(True)
+        self.setChecked(enabled)
+        self.blockSignals(False)
+
+        merged = {**self._defaults, **params}
+        for key, widget in self._controls.items():
+            value = merged.get(key)
+            if value is None:
+                continue
+            if isinstance(widget, FloatSlider):
+                widget.set_value(float(value))
+            else:  # QCheckBox
+                widget.blockSignals(True)
+                widget.setChecked(bool(value))
+                widget.blockSignals(False)
