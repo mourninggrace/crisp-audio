@@ -1,0 +1,17 @@
+# Normalize line endings: store text as LF in the repo, check out native.
+* text=auto
+
+# Always-LF for these regardless of platform.
+*.py   text eol=lf
+*.toml text eol=lf
+*.md   text eol=lf
+*.spec text eol=lf
+
+# Binary assets — never touch.
+*.wav  binary
+*.flac binary
+*.mp3  binary
+*.ogg  binary
+*.m4a  binary
+*.png  binary
+*.ico  binary

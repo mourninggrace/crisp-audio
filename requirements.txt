@@ -1,0 +1,16 @@
+# Core audio
+numpy>=1.26
+scipy>=1.11
+soundfile>=0.12          # libsndfile-backed WAV/FLAC/OGG read+write
+sounddevice>=0.4.6       # recording / playback
+noisereduce>=3.0         # spectral-gating denoise
+pyloudnorm>=0.1.1        # ITU-R BS.1770 LUFS metering
+pydub>=0.25.1            # high-level format glue (uses ffmpeg)
+imageio-ffmpeg>=0.4.9    # bundled ffmpeg binary (MP3/AAC encode, self-contained exe)
+
+# GUI
+PySide6>=6.6             # Qt for Python (LGPL)
+pyqtgraph>=0.13          # fast waveform rendering on top of Qt
+
+# Packaging (dev only)
+pyinstaller>=6.3
