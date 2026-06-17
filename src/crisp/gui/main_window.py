@@ -86,17 +86,49 @@ class MainWindow(QtWidgets.QMainWindow):
         # --- Cleanup: one collapsible panel per stage, each with sliders ---
         clean_box = QtWidgets.QGroupBox("Cleanup")
         clean = QtWidgets.QVBoxLayout(clean_box)
-
-        # Panels can get tall once sliders are shown, so scroll them.
-        scroll = QtWidgets.QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QtWidgets.QFrame.NoFrame)
-        inner = QtWidgets.QWidget()
-        inner_layout = QtWidgets.QVBoxLayout(inner)
-        inner_layout.setContentsMargins(0, 0, 0, 0)
-
-        self.panels: dict[str, ProcessorPanel] = {}
+        
+        # Create a tabbed interface for processor groups instead of just stacking 
+        tab_widget = QtWidgets.QTabWidget()
+        
+        # Group processors by type for better organization
+        noise_tab = QtWidgets.QWidget()
+        noise_layout = QtWidgets.QVBoxLayout(noise_tab)
+        noise_layout.setContentsMargins(5, 5, 5, 5)
+        
+        dereverb_tab = QtWidgets.QWidget()
+        dereverb_layout = QtWidgets.QVBoxLayout(dereverb_tab)
+        dereverb_layout.setContentsMargins(5, 5, 5, 5)
+        
+        eq_clarity_tab = QtWidgets.QWidget()
+        eq_clarity_layout = QtWidgets.QVBoxLayout(eq_clarity_tab)
+        eq_clarity_layout.setContentsMargins(5, 5, 5, 5)
+        
+        loudness_tab = QtWidgets.QWidget()
+        loudness_layout = QtWidgets.QVBoxLayout(loudness_tab)
+        loudness_layout.setContentsMargins(5, 5, 5, 5)
+        
+        # Processor grouping
+        noise_processors = []
+        dereverb_processors = []
+        eq_clarity_processors = []
+        loudness_processors = []
+        
+        # Add processors to appropriate tabs
         for proc in ALL_PROCESSORS:
+            if 'noise' in proc.key.lower():
+                noise_processors.append(proc)
+            elif 'dereverb' in proc.key.lower():
+                dereverb_processors.append(proc)
+            elif 'eq' in proc.key.lower() or 'clarity' in proc.key.lower():
+                eq_clarity_processors.append(proc)
+            elif 'loudness' in proc.key.lower():
+                loudness_processors.append(proc)
+        
+        # Create panels for each processor and add to their corresponding tabs
+        self.panels: dict[str, ProcessorPanel] = {}
+        
+        # Noise reduction processors
+        for proc in noise_processors:
             panel = ProcessorPanel(
                 proc,
                 enabled=self._settings.is_enabled(proc.key),
@@ -104,11 +136,52 @@ class MainWindow(QtWidgets.QMainWindow):
                 on_enabled=self._set_enabled,
                 on_param=self._set_param,
             )
-            inner_layout.addWidget(panel)
+            noise_layout.addWidget(panel)
             self.panels[proc.key] = panel
-        inner_layout.addStretch(1)
-        scroll.setWidget(inner)
-        clean.addWidget(scroll, 1)
+        
+        # Dereverb processors
+        for proc in dereverb_processors:
+            panel = ProcessorPanel(
+                proc,
+                enabled=self._settings.is_enabled(proc.key),
+                params=self._settings.params.get(proc.key, {}),
+                on_enabled=self._set_enabled,
+                on_param=self._set_param,
+            )
+            dereverb_layout.addWidget(panel)
+            self.panels[proc.key] = panel
+            
+        # EQ and clarity processors
+        for proc in eq_clarity_processors:
+            panel = ProcessorPanel(
+                proc,
+                enabled=self._settings.is_enabled(proc.key),
+                params=self._settings.params.get(proc.key, {}),
+                on_enabled=self._set_enabled,
+                on_param=self._set_param,
+            )
+            eq_clarity_layout.addWidget(panel)
+            self.panels[proc.key] = panel
+            
+        # Loudness processors
+        for proc in loudness_processors:
+            panel = ProcessorPanel(
+                proc,
+                enabled=self._settings.is_enabled(proc.key),
+                params=self._settings.params.get(proc.key, {}),
+                on_enabled=self._set_enabled,
+                on_param=self._set_param,
+            )
+            loudness_layout.addWidget(panel)
+            self.panels[proc.key] = panel
+        
+        # Add tabs to widget
+        tab_widget.addTab(noise_tab, "Noise Reduction")
+        tab_widget.addTab(dereverb_tab, "Dereverberation")
+        tab_widget.addTab(eq_clarity_tab, "EQ & Clarity")
+        tab_widget.addTab(loudness_tab, "Loudness")
+        
+        clean.addWidget(tab_widget)
 
         # Save / load custom cleanup settings (toggles + slider values).
         io_row = QtWidgets.QHBoxLayout()
