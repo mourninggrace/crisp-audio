@@ -27,7 +27,7 @@ def _dark(key: str, name: str, bg: str, fg: str, accent: str, alt: str,
 QWidget {{
     background-color: {bg};
     color: {fg};
-    font-size: 12px;
+    font-size: 14px;
 }}
 QMainWindow, QDialog {{
     background-color: {bg};
@@ -35,9 +35,10 @@ QMainWindow, QDialog {{
 QGroupBox {{
     border: 1px solid {border};
     border-radius: 4px;
-    margin-top: 6px;
-    padding-top: 6px;
+    margin-top: 8px;
+    padding-top: 8px;
     color: {fg};
+    font-size: 14px;
 }}
 QGroupBox::title {{
     subcontrol-origin: margin;
@@ -45,7 +46,7 @@ QGroupBox::title {{
     color: {accent};
 }}
 QGroupBox::indicator {{
-    width: 13px; height: 13px;
+    width: 16px; height: 16px;
 }}
 QSplitter::handle {{
     background-color: {border};
@@ -59,10 +60,11 @@ QTabWidget::pane {{
 QTabBar::tab {{
     background: {alt};
     color: {fg};
-    padding: 4px 10px;
+    padding: 6px 14px;
     border: 1px solid {border};
     border-bottom: none;
     border-radius: 3px 3px 0 0;
+    font-size: 14px;
 }}
 QTabBar::tab:selected {{
     background: {bg};
@@ -77,7 +79,8 @@ QPushButton {{
     color: {fg};
     border: 1px solid {border};
     border-radius: 4px;
-    padding: 4px 10px;
+    padding: 6px 14px;
+    font-size: 14px;
 }}
 QPushButton:hover {{
     background-color: {hover};
@@ -94,23 +97,25 @@ QComboBox {{
     color: {fg};
     border: 1px solid {border};
     border-radius: 4px;
-    padding: 2px 6px;
+    padding: 4px 8px;
+    font-size: 14px;
 }}
 QComboBox QAbstractItemView {{
     background-color: {alt};
     color: {fg};
     selection-background-color: {accent};
     selection-color: {bg};
+    font-size: 14px;
 }}
 QSlider::groove:horizontal {{
-    height: 4px;
+    height: 5px;
     background: {border};
     border-radius: 2px;
 }}
 QSlider::handle:horizontal {{
-    width: 12px; height: 12px;
-    margin: -4px 0;
-    border-radius: 6px;
+    width: 16px; height: 16px;
+    margin: -6px 0;
+    border-radius: 8px;
     background: {accent};
 }}
 QSlider::sub-page:horizontal {{
@@ -123,25 +128,34 @@ QProgressBar {{
     border-radius: 4px;
     text-align: center;
     color: {fg};
+    font-size: 14px;
 }}
 QProgressBar::chunk {{
     background-color: {accent};
     border-radius: 3px;
 }}
+QCheckBox {{
+    font-size: 14px;
+    spacing: 8px;
+}}
 QCheckBox::indicator {{
-    width: 13px; height: 13px;
+    width: 16px; height: 16px;
     border: 1px solid {border};
-    border-radius: 2px;
+    border-radius: 3px;
     background: {alt};
 }}
 QCheckBox::indicator:checked {{
     background: {accent};
     border-color: {accent};
 }}
+QRadioButton {{
+    font-size: 14px;
+    spacing: 8px;
+}}
 QRadioButton::indicator {{
-    width: 13px; height: 13px;
+    width: 16px; height: 16px;
     border: 1px solid {border};
-    border-radius: 7px;
+    border-radius: 8px;
     background: {alt};
 }}
 QRadioButton::indicator:checked {{
@@ -150,13 +164,13 @@ QRadioButton::indicator:checked {{
 }}
 QScrollBar:vertical {{
     background: {alt};
-    width: 10px;
-    border-radius: 5px;
+    width: 12px;
+    border-radius: 6px;
 }}
 QScrollBar::handle:vertical {{
     background: {border};
-    border-radius: 5px;
-    min-height: 20px;
+    border-radius: 6px;
+    min-height: 24px;
 }}
 QScrollBar::handle:vertical:hover {{
     background: {accent};
@@ -166,16 +180,19 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
 }}
 QLabel {{
     color: {fg};
+    font-size: 14px;
 }}
 QStatusBar {{
     background: {alt};
     color: {fg};
     border-top: 1px solid {border};
+    font-size: 13px;
 }}
 QMenuBar {{
     background: {alt};
     color: {fg};
     border-bottom: 1px solid {border};
+    font-size: 14px;
 }}
 QMenuBar::item:selected {{
     background: {hover};
@@ -184,6 +201,7 @@ QMenu {{
     background: {alt};
     color: {fg};
     border: 1px solid {border};
+    font-size: 14px;
 }}
 QMenu::item:selected {{
     background: {accent};
@@ -194,6 +212,7 @@ QListWidget {{
     color: {fg};
     border: 1px solid {border};
     border-radius: 4px;
+    font-size: 14px;
 }}
 QListWidget::item:selected {{
     background: {accent};

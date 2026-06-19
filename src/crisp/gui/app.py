@@ -18,6 +18,11 @@ def run(argv: list[str]) -> int:
     app.setApplicationName(APP_NAME)
     app.setStyle("Fusion")
 
+    # Bump the base font to something readable.
+    font = app.font()
+    font.setPointSize(11)
+    app.setFont(font)
+
     # Apply persisted theme before the window draws anything.
     settings = load_settings()
     apply_theme(app, settings.get("theme", "dark_default"))
