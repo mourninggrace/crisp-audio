@@ -13,6 +13,7 @@ from crisp.core.audio import AudioClip
 from crisp.core.batch import BatchResult, process_folder
 from crisp.core.engine import CleanupEngine, CleanupSettings
 from crisp.core.presets import ExportSettings
+from crisp.core.analyser import AnalysisReport
 
 
 class CleanupWorker(QtCore.QThread):
@@ -66,5 +67,42 @@ class BatchWorker(QtCore.QThread):
                 progress=lambda p, i, t, s: self.progress.emit(p.name, i, t, s),
             )
             self.finished_all.emit(results)
+        except Exception as exc:
+            self.failed.emit(str(exc))
+
+
+class AutoCleanWorker(QtCore.QThread):
+    """Analyse → auto-build settings → process, all on a background thread.
+
+    Emits ``report_ready`` with the :class:`AnalysisReport` (so the UI can
+    show a summary *before* processing starts), then emits ``progress``
+    during the DSP pass, then ``finished_ok`` with the cleaned clip.
+    """
+    report_ready = QtCore.Signal(object)    # AnalysisReport
+    progress = QtCore.Signal(str, float)    # stage label, fraction
+    finished_ok = QtCore.Signal(object)     # AudioClip
+    failed = QtCore.Signal(str)
+
+    def __init__(self, clip: AudioClip) -> None:
+        super().__init__()
+        self._clip = clip
+
+    def run(self) -> None:
+        try:
+            from crisp.core.analyser import AutoAnalyser
+            self.progress.emit("Analysing audio…", 0.0)
+            report = AutoAnalyser().analyse(self._clip)
+            self._last_report = report
+            self.report_ready.emit(report)
+
+            engine = CleanupEngine()
+            result = engine.run(
+                self._clip,
+                report.settings,
+                progress=lambda label, frac: self.progress.emit(
+                    label, 0.15 + frac * 0.85
+                ),
+            )
+            self.finished_ok.emit(result)
         except Exception as exc:
             self.failed.emit(str(exc))

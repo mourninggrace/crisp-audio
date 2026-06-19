@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6 import QtCore, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from crisp import APP_NAME, __version__
 from crisp.core import audio_io
@@ -19,7 +19,7 @@ from crisp.gui.settings_dialog import SettingsDialog, load_settings
 from crisp.gui.themes import apply_theme
 from crisp.gui.waveform import WaveformPair
 from crisp.gui.widgets import ProcessorPanel
-from crisp.gui.workers import BatchWorker, CleanupWorker
+from crisp.gui.workers import AutoCleanWorker, BatchWorker, CleanupWorker
 
 _AUDIO_FILTER = "Audio (*.wav *.flac *.ogg *.mp3 *.m4a *.aac *.aiff)"
 _SETTINGS_FILTER = "Crisp settings (*.crisp.json *.json)"
@@ -37,6 +37,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._player = ABPlayer()
         self._cleanup_worker: CleanupWorker | None = None
         self._batch_worker: BatchWorker | None = None
+        self._auto_clean_worker: AutoCleanWorker | None = None
         self._settings = CleanupSettings.defaults()
 
         # Drives the waveform playhead while audio is playing (~30 fps).
@@ -82,7 +83,7 @@ class MainWindow(QtWidgets.QMainWindow):
         # Dynamically build a theme submenu
         theme_menu = view_menu.addMenu("Colour theme")
         from crisp.gui.themes import THEMES, THEME_KEYS
-        self._theme_group = QtWidgets.QActionGroup(self)
+        self._theme_group = QtGui.QActionGroup(self)
         self._theme_group.setExclusive(True)
         saved_theme = load_settings().get("theme", "dark_default")
         for key in THEME_KEYS:
@@ -281,6 +282,17 @@ class MainWindow(QtWidgets.QMainWindow):
         io_row.addWidget(self.save_settings_btn)
         io_row.addWidget(self.load_settings_btn)
         clean.addLayout(io_row)
+
+        self.auto_clean_btn = QtWidgets.QPushButton("✨ Auto Clean")
+        self.auto_clean_btn.setToolTip(
+            "Automatically analyse and clean the audio — no settings needed."
+        )
+        self.auto_clean_btn.setMinimumHeight(36)
+        font = self.auto_clean_btn.font()
+        font.setBold(True)
+        self.auto_clean_btn.setFont(font)
+        self.auto_clean_btn.clicked.connect(self._auto_clean)
+        clean.addWidget(self.auto_clean_btn)
 
         self.apply_btn = QtWidgets.QPushButton("Apply cleanup")
         self.apply_btn.clicked.connect(self._apply_cleanup)
@@ -505,6 +517,82 @@ class MainWindow(QtWidgets.QMainWindow):
     def _on_cleanup_failed(self, msg: str) -> None:
         self.apply_btn.setEnabled(True)
         QtWidgets.QMessageBox.critical(self, "Cleanup failed", msg)
+
+    # ----- Auto Clean -------------------------------------------------------
+
+    def _auto_clean(self) -> None:
+        if self._original is None:
+            self.statusBar().showMessage("Load or record audio first")
+            return
+        if self._auto_clean_worker and self._auto_clean_worker.isRunning():
+            return
+        self.auto_clean_btn.setEnabled(False)
+        self.apply_btn.setEnabled(False)
+        self.progress.setValue(0)
+        self._auto_clean_worker = AutoCleanWorker(self._original)
+        self._auto_clean_worker.report_ready.connect(self._on_auto_report)
+        self._auto_clean_worker.progress.connect(self._on_cleanup_progress)
+        self._auto_clean_worker.finished_ok.connect(self._on_auto_clean_done)
+        self._auto_clean_worker.failed.connect(self._on_auto_clean_failed)
+        self._auto_clean_worker.start()
+
+    def _on_auto_report(self, report) -> None:
+        """Called once analysis is done, before DSP starts."""
+        self.statusBar().showMessage("Analysis done — applying smart cleanup…")
+        # Sync the manual panels to the auto-computed settings so the user can
+        # see exactly what was applied if they want to tweak afterwards.
+        self._settings = report.settings
+        for key, panel in self.panels.items():
+            panel.set_state(
+                self._settings.is_enabled(key),
+                self._settings.params.get(key, {}),
+            )
+
+    def _on_auto_clean_done(self, clip: AudioClip) -> None:
+        self._cleaned = clip
+        self._player.set_clip("B", clip)
+        self.waveforms.set_after(clip)
+        self.progress.setValue(100)
+        self.auto_clean_btn.setEnabled(True)
+        self.apply_btn.setEnabled(True)
+        self.b_btn.setChecked(True)
+        self._update_lufs()
+
+        report = None
+        if self._auto_clean_worker:
+            # Grab the report we stored on the worker for the summary dialog
+            report = getattr(self._auto_clean_worker, "_last_report", None)
+
+        self.statusBar().showMessage("Auto Clean complete ✓")
+        self._show_auto_report_dialog()
+
+    def _show_auto_report_dialog(self) -> None:
+        """Pop a non-modal info box summarising what Auto Clean decided."""
+        worker = self._auto_clean_worker
+        if worker is None:
+            return
+        report = getattr(worker, "_last_report", None)
+        if report is None:
+            return
+        lines = report.summary_lines()
+        decisions = getattr(report, "decisions", [])
+        text = "<b>Measurements</b><br>"
+        text += "<br>".join(lines)
+        if decisions:
+            text += "<br><br><b>What was applied</b><br>"
+            text += "<br>".join(f"• {d}" for d in decisions)
+        box = QtWidgets.QMessageBox(self)
+        box.setWindowTitle("Auto Clean — Report")
+        box.setTextFormat(QtCore.Qt.TextFormat.RichText)
+        box.setText(text)
+        box.setIcon(QtWidgets.QMessageBox.Icon.Information)
+        box.setStandardButtons(QtWidgets.QMessageBox.StandardButton.Ok)
+        box.exec()
+
+    def _on_auto_clean_failed(self, msg: str) -> None:
+        self.auto_clean_btn.setEnabled(True)
+        self.apply_btn.setEnabled(True)
+        QtWidgets.QMessageBox.critical(self, "Auto Clean failed", msg)
 
     # ----- Playback / A-B --------------------------------------------------
 

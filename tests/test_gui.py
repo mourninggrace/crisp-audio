@@ -51,7 +51,7 @@ def test_cleanup_worker_instantiates():
     clip = AudioClip.from_array([0.1] * 48000, sample_rate=48000)
     settings = CleanupSettings.defaults()
     worker = CleanupWorker(clip, settings)
-    assert worker.clip is clip
+    assert worker._clip is clip
 
 
 def test_ab_player_instantiates(qapp):
