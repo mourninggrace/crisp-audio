@@ -15,6 +15,8 @@ from crisp.core.processors import ALL_PROCESSORS
 from crisp.core.processors.loudness import LoudnessNormalize
 from crisp.core.recorder import Recorder, default_input_device, list_input_devices
 from crisp.gui.player import ABPlayer
+from crisp.gui.settings_dialog import SettingsDialog, load_settings
+from crisp.gui.themes import apply_theme
 from crisp.gui.waveform import WaveformPair
 from crisp.gui.widgets import ProcessorPanel
 from crisp.gui.workers import BatchWorker, CleanupWorker
@@ -43,26 +45,137 @@ class MainWindow(QtWidgets.QMainWindow):
         self._playhead_timer.timeout.connect(self._tick_playhead)
 
         self._build_ui()
+        self._build_menu()
         self._refresh_devices()
 
     # ----- UI construction -------------------------------------------------
+
+    def _build_menu(self) -> None:
+        """Build the top-level menu bar."""
+        bar = self.menuBar()
+
+        # File
+        file_menu = bar.addMenu("File")
+        open_action = file_menu.addAction("Open file…")
+        open_action.setShortcut("Ctrl+O")
+        open_action.triggered.connect(self._open_file)
+
+        export_action = file_menu.addAction("Export cleaned…")
+        export_action.setShortcut("Ctrl+E")
+        export_action.triggered.connect(self._export_file)
+
+        file_menu.addSeparator()
+        file_menu.addAction("Save cleanup settings…").triggered.connect(self._save_settings)
+        file_menu.addAction("Load cleanup settings…").triggered.connect(self._load_settings)
+
+        file_menu.addSeparator()
+        quit_action = file_menu.addAction("Quit")
+        quit_action.setShortcut("Ctrl+Q")
+        quit_action.triggered.connect(self.close)
+
+        # Edit
+        edit_menu = bar.addMenu("Edit")
+        edit_menu.addAction("Batch folder…").triggered.connect(self._batch)
+
+        # View
+        view_menu = bar.addMenu("View")
+        # Dynamically build a theme submenu
+        theme_menu = view_menu.addMenu("Colour theme")
+        from crisp.gui.themes import THEMES, THEME_KEYS
+        self._theme_group = QtWidgets.QActionGroup(self)
+        self._theme_group.setExclusive(True)
+        saved_theme = load_settings().get("theme", "dark_default")
+        for key in THEME_KEYS:
+            t = THEMES[key]
+            icon = "🌙" if t.dark else "☀️"
+            act = theme_menu.addAction(f"{icon}  {t.name}")
+            act.setCheckable(True)
+            act.setChecked(key == saved_theme)
+            act.setData(key)
+            self._theme_group.addAction(act)
+        self._theme_group.triggered.connect(self._on_theme_action)
+
+        # Settings
+        settings_menu = bar.addMenu("Settings")
+        prefs_action = settings_menu.addAction("Preferences…")
+        prefs_action.setShortcut("Ctrl+,")
+        prefs_action.triggered.connect(self._open_settings)
+
+        # Help
+        help_menu = bar.addMenu("Help")
+        about_action = help_menu.addAction(f"About {APP_NAME}")
+        about_action.triggered.connect(self._show_about)
+
+    def _on_theme_action(self, action) -> None:
+        key = action.data()
+        app = QtWidgets.QApplication.instance()
+        if app:
+            apply_theme(app, key)
+        # Persist
+        from crisp.gui.settings_dialog import load_settings, save_settings
+        s = load_settings()
+        s["theme"] = key
+        save_settings(s)
+
+    def _open_settings(self) -> None:
+        dlg = SettingsDialog(self)
+        dlg.settings_changed.connect(self._on_settings_changed)
+        dlg.exec()
+
+    def _on_settings_changed(self, data: dict) -> None:
+        """React to changes confirmed in the settings dialog."""
+        # Theme is already applied live via the dialog; nothing more to do there.
+        # Sync playback volume if the player exposes it.
+        vol = float(data.get("playback_volume", 1.0))
+        if hasattr(self._player, "set_volume"):
+            self._player.set_volume(vol)
+        self.statusBar().showMessage("Settings saved.")
+
+    def _show_about(self) -> None:
+        from crisp import __version__
+        QtWidgets.QMessageBox.about(
+            self,
+            f"About {APP_NAME}",
+            f"<h3>{APP_NAME} {__version__}</h3>"
+            "<p>Audio cleanup and enhancement tool.</p>"
+            "<p>Built with PySide6 · scipy · noisereduce · pyloudnorm · soundfile · ffmpeg.</p>"
+        )
 
     def _build_ui(self) -> None:
         central = QtWidgets.QWidget()
         self.setCentralWidget(central)
         root = QtWidgets.QHBoxLayout(central)
+        root.setContentsMargins(4, 4, 4, 4)
+        root.setSpacing(0)
 
-        root.addLayout(self._build_left_panel(), 0)
-        root.addLayout(self._build_center(), 1)
+        # Main horizontal splitter: left controls | centre waveform area
+        self._main_splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
+        self._main_splitter.addWidget(self._build_left_panel())
+        self._main_splitter.addWidget(self._build_center())
+        # Left panel gets fixed initial width; centre takes remaining space.
+        self._main_splitter.setStretchFactor(0, 0)
+        self._main_splitter.setStretchFactor(1, 1)
+        self._main_splitter.setSizes([340, 760])
 
+        root.addWidget(self._main_splitter)
         self.statusBar().showMessage("Ready")
 
-    def _build_left_panel(self) -> QtWidgets.QVBoxLayout:
-        col = QtWidgets.QVBoxLayout()
+    def _build_left_panel(self) -> QtWidgets.QSplitter:
+        """Return a vertical splitter containing Source, Cleanup, and Export sections."""
+        splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Vertical)
+        splitter.addWidget(self._build_source_box())
+        splitter.addWidget(self._build_cleanup_box())
+        splitter.addWidget(self._build_export_box())
+        # Source stays compact; cleanup takes most space; export is medium.
+        splitter.setSizes([130, 420, 200])
+        return splitter
 
-        # --- Source: device + record / open ---
+    # ----- Source section --------------------------------------------------
+
+    def _build_source_box(self) -> QtWidgets.QGroupBox:
         src_box = QtWidgets.QGroupBox("Source")
         src = QtWidgets.QVBoxLayout(src_box)
+
         self.device_combo = QtWidgets.QComboBox()
         src.addWidget(QtWidgets.QLabel("Input device"))
         src.addWidget(self.device_combo)
@@ -81,107 +194,83 @@ class MainWindow(QtWidgets.QMainWindow):
         self.level_bar.setTextVisible(False)
         src.addWidget(QtWidgets.QLabel("Input level"))
         src.addWidget(self.level_bar)
-        col.addWidget(src_box)
+        src.addStretch(1)
 
-        # --- Cleanup: one collapsible panel per stage, each with sliders ---
+        return src_box
+
+    # ----- Cleanup section -------------------------------------------------
+
+    def _build_cleanup_box(self) -> QtWidgets.QGroupBox:
         clean_box = QtWidgets.QGroupBox("Cleanup")
         clean = QtWidgets.QVBoxLayout(clean_box)
-        
-        # Create a tabbed interface for processor groups instead of just stacking 
+
+        # Organise processors into tabs by category.
         tab_widget = QtWidgets.QTabWidget()
-        
-        # Group processors by type for better organization
+
+        self.panels: dict[str, ProcessorPanel] = {}
+
+        def _add_panel(proc, layout):
+            p = ProcessorPanel(
+                proc,
+                enabled=self._settings.is_enabled(proc.key),
+                params=self._settings.params.get(proc.key, {}),
+                on_enabled=self._set_enabled,
+                on_param=self._set_param,
+            )
+            layout.addWidget(p)
+            self.panels[proc.key] = p
+
+        # Noise Reduction: noise + plosives
         noise_tab = QtWidgets.QWidget()
         noise_layout = QtWidgets.QVBoxLayout(noise_tab)
-        noise_layout.setContentsMargins(5, 5, 5, 5)
-        
+        noise_layout.setContentsMargins(4, 4, 4, 4)
+        for proc in ALL_PROCESSORS:
+            if proc.key in ("noise", "plosives"):
+                _add_panel(proc, noise_layout)
+        noise_layout.addStretch(1)
+        tab_widget.addTab(noise_tab, "Noise Reduction")
+
+        # Dereverberation
         dereverb_tab = QtWidgets.QWidget()
         dereverb_layout = QtWidgets.QVBoxLayout(dereverb_tab)
-        dereverb_layout.setContentsMargins(5, 5, 5, 5)
-        
-        eq_clarity_tab = QtWidgets.QWidget()
-        eq_clarity_layout = QtWidgets.QVBoxLayout(eq_clarity_tab)
-        eq_clarity_layout.setContentsMargins(5, 5, 5, 5)
-        
+        dereverb_layout.setContentsMargins(4, 4, 4, 4)
+        for proc in ALL_PROCESSORS:
+            if proc.key == "dereverb":
+                _add_panel(proc, dereverb_layout)
+        dereverb_layout.addStretch(1)
+        tab_widget.addTab(dereverb_tab, "Dereverb")
+
+        # EQ & Clarity
+        eq_tab = QtWidgets.QWidget()
+        eq_layout = QtWidgets.QVBoxLayout(eq_tab)
+        eq_layout.setContentsMargins(4, 4, 4, 4)
+        for proc in ALL_PROCESSORS:
+            if proc.key in ("eq", "clarity"):
+                _add_panel(proc, eq_layout)
+        eq_layout.addStretch(1)
+        tab_widget.addTab(eq_tab, "EQ & Clarity")
+
+        # Loudness normalisation
         loudness_tab = QtWidgets.QWidget()
         loudness_layout = QtWidgets.QVBoxLayout(loudness_tab)
-        loudness_layout.setContentsMargins(5, 5, 5, 5)
-        
-        # Processor grouping
-        noise_processors = []
-        dereverb_processors = []
-        eq_clarity_processors = []
-        loudness_processors = []
-        
-        # Add processors to appropriate tabs
+        loudness_layout.setContentsMargins(4, 4, 4, 4)
         for proc in ALL_PROCESSORS:
-            if 'noise' in proc.key.lower():
-                noise_processors.append(proc)
-            elif 'dereverb' in proc.key.lower():
-                dereverb_processors.append(proc)
-            elif 'eq' in proc.key.lower() or 'clarity' in proc.key.lower():
-                eq_clarity_processors.append(proc)
-            elif 'loudness' in proc.key.lower():
-                loudness_processors.append(proc)
-        
-        # Create panels for each processor and add to their corresponding tabs
-        self.panels: dict[str, ProcessorPanel] = {}
-        
-        # Noise reduction processors
-        for proc in noise_processors:
-            panel = ProcessorPanel(
-                proc,
-                enabled=self._settings.is_enabled(proc.key),
-                params=self._settings.params.get(proc.key, {}),
-                on_enabled=self._set_enabled,
-                on_param=self._set_param,
-            )
-            noise_layout.addWidget(panel)
-            self.panels[proc.key] = panel
-        
-        # Dereverb processors
-        for proc in dereverb_processors:
-            panel = ProcessorPanel(
-                proc,
-                enabled=self._settings.is_enabled(proc.key),
-                params=self._settings.params.get(proc.key, {}),
-                on_enabled=self._set_enabled,
-                on_param=self._set_param,
-            )
-            dereverb_layout.addWidget(panel)
-            self.panels[proc.key] = panel
-            
-        # EQ and clarity processors
-        for proc in eq_clarity_processors:
-            panel = ProcessorPanel(
-                proc,
-                enabled=self._settings.is_enabled(proc.key),
-                params=self._settings.params.get(proc.key, {}),
-                on_enabled=self._set_enabled,
-                on_param=self._set_param,
-            )
-            eq_clarity_layout.addWidget(panel)
-            self.panels[proc.key] = panel
-            
-        # Loudness processors
-        for proc in loudness_processors:
-            panel = ProcessorPanel(
-                proc,
-                enabled=self._settings.is_enabled(proc.key),
-                params=self._settings.params.get(proc.key, {}),
-                on_enabled=self._set_enabled,
-                on_param=self._set_param,
-            )
-            loudness_layout.addWidget(panel)
-            self.panels[proc.key] = panel
-        
-        # Add tabs to widget
-        tab_widget.addTab(noise_tab, "Noise Reduction")
-        tab_widget.addTab(dereverb_tab, "Dereverberation")
-        tab_widget.addTab(eq_clarity_tab, "EQ & Clarity")
+            if proc.key == "loudness":
+                _add_panel(proc, loudness_layout)
+        loudness_layout.addStretch(1)
         tab_widget.addTab(loudness_tab, "Loudness")
-        
-        clean.addWidget(tab_widget)
+
+        # Effects: Trim, Chorus, Widener, Panner
+        effects_tab = QtWidgets.QWidget()
+        effects_layout = QtWidgets.QVBoxLayout(effects_tab)
+        effects_layout.setContentsMargins(4, 4, 4, 4)
+        for proc in ALL_PROCESSORS:
+            if proc.key in ("trim", "chorus", "widener", "panner"):
+                _add_panel(proc, effects_layout)
+        effects_layout.addStretch(1)
+        tab_widget.addTab(effects_tab, "Effects")
+
+        clean.addWidget(tab_widget, 1)
 
         # Save / load custom cleanup settings (toggles + slider values).
         io_row = QtWidgets.QHBoxLayout()
@@ -199,12 +288,10 @@ class MainWindow(QtWidgets.QMainWindow):
         self.progress = QtWidgets.QProgressBar()
         self.progress.setRange(0, 100)
         clean.addWidget(self.progress)
-        col.addWidget(clean_box, 1)
 
-        # --- Export ---
-        col.addWidget(self._build_export_box())
-        col.addStretch(1)
-        return col
+        return clean_box
+
+    # ----- Export section --------------------------------------------------
 
     def _build_export_box(self) -> QtWidgets.QGroupBox:
         box = QtWidgets.QGroupBox("Export")
@@ -244,12 +331,17 @@ class MainWindow(QtWidgets.QMainWindow):
         self._update_export_fields()
         return box
 
-    def _build_center(self) -> QtWidgets.QVBoxLayout:
-        col = QtWidgets.QVBoxLayout()
+    # ----- Centre panel (waveform + transport) -----------------------------
+
+    def _build_center(self) -> QtWidgets.QWidget:
+        widget = QtWidgets.QWidget()
+        col = QtWidgets.QVBoxLayout(widget)
+        col.setContentsMargins(4, 0, 0, 0)
+
         self.waveforms = WaveformPair()
         col.addWidget(self.waveforms, 1)
 
-        # Transport / A-B row
+        # Transport / A-B row — fixed height, no need for a splitter here.
         bar = QtWidgets.QHBoxLayout()
         self.play_btn = QtWidgets.QPushButton("▶ Play")
         self.play_btn.clicked.connect(self._toggle_play)
@@ -269,7 +361,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.lufs_label = QtWidgets.QLabel("LUFS: —")
         bar.addWidget(self.lufs_label)
         col.addLayout(bar)
-        return col
+
+        return widget
 
     # ----- Devices / recording --------------------------------------------
 
@@ -318,7 +411,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _on_level(self, level: float) -> None:
         # Called from the audio thread; marshal to the GUI thread.
         QtCore.QMetaObject.invokeMethod(
-            self.level_bar, "setValue", QtCore.Qt.QueuedConnection,
+            self.level_bar, "setValue", QtCore.Qt.ConnectionType.QueuedConnection,
             QtCore.Q_ARG(int, int(min(level, 1.0) * 100)),
         )
 
@@ -458,8 +551,10 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _update_export_fields(self) -> None:
         fmt = self._current_format()
-        self.subtype_combo.setEnabled(fmt in (Format.WAV, Format.FLAC))
-        self.bitrate_combo.setEnabled(fmt in (Format.MP3, Format.AAC, Format.OGG))
+        lossless = fmt in (Format.WAV, Format.FLAC, Format.AIFF)
+        lossy    = fmt in (Format.MP3, Format.AAC, Format.OGG, Format.OPUS)
+        self.subtype_combo.setEnabled(lossless)
+        self.bitrate_combo.setEnabled(lossy)
 
     def _apply_preset(self) -> None:
         key = self.preset_combo.currentData()

@@ -9,12 +9,18 @@ def run(argv: list[str]) -> int:
 
     from crisp.core.ffmpeg import configure_pydub
     from crisp.gui.main_window import MainWindow
+    from crisp.gui.settings_dialog import load_settings
+    from crisp.gui.themes import apply_theme
 
     configure_pydub()  # wire ffmpeg up front so export "just works"
 
     app = QtWidgets.QApplication(argv)
     app.setApplicationName(APP_NAME)
     app.setStyle("Fusion")
+
+    # Apply persisted theme before the window draws anything.
+    settings = load_settings()
+    apply_theme(app, settings.get("theme", "dark_default"))
 
     window = MainWindow()
     window.show()

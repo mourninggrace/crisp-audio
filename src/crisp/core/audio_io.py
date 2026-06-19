@@ -54,6 +54,10 @@ def save_ogg(clip: AudioClip, path: str | Path) -> None:
     sf.write(str(path), clip.samples, clip.sample_rate, format="OGG", subtype="VORBIS")
 
 
+def save_aiff(clip: AudioClip, path: str | Path, subtype: str = "PCM_16") -> None:
+    sf.write(str(path), clip.samples, clip.sample_rate, subtype=subtype, format="AIFF")
+
+
 def clip_to_segment(clip: AudioClip):
     """Convert a clip to a pydub ``AudioSegment`` (int16) for ffmpeg encoding."""
     from pydub import AudioSegment
